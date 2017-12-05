@@ -99,7 +99,7 @@ void recv_header(int clientfd, char *recv_buff)
     int offset = 0;
 
     if ((rebytes = recv(clientfd, recv_buff + offset, MAX_HDR_SIZE, 0)) > 0) {
-        // Should I do something here
+        // printf("READ %d BYTES FOR HEADER\n");
     }
 
     return;
@@ -162,15 +162,13 @@ void parse_cla(struct ConfigData *config_data, int argc, char *argv[])
 
     // Iterate through args
     for (int i = 2; i < argc; i++) {
+
         if (strcmp(argv[i], "-t") == 0) {
-            i += 1;
-            config_data->timeout = atoi(argv[i]);
+            config_data->timeout = atoi(argv[++i]);
         }
         else if (strcmp(argv[i], "-e") == 0) {
-            i += 1;
-            config_data->exp_timeout = atoi(argv[i]);
+            config_data->exp_timeout = atoi(argv[++i]);
         }
-
     }
 
     return;
@@ -179,12 +177,12 @@ void parse_cla(struct ConfigData *config_data, int argc, char *argv[])
 
 void print_config(struct ConfigData *config_data)
 {
-   // Print all configurations options prettttty
-   printf("*************** t2PROXY ****************\n");
-   printf("*       PORT: %d\n", config_data->port);
-   printf("*    TIMEOUT: %d s\n", config_data->timeout);
-   printf("* EXPIRATION: %d ms\n", config_data->exp_timeout);
-   printf("****************************************\n\n");
+    // Print all configurations options prettttty
+    printf("*************** t2PROXY ****************\n");
+    printf("*       PORT: %d\n", config_data->port);
+    printf("*    TIMEOUT: %d s\n", config_data->timeout);
+    printf("* EXPIRATION: %d ms\n", config_data->exp_timeout);
+    printf("****************************************\n\n");
 }
 
 // Bind to socket and listen on port

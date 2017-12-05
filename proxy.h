@@ -22,7 +22,7 @@ struct ConfigData {
 struct ReqParams {
     char *host;
     char *uri;
-	char *port;
+    char *port;
     char *version;
     char *method;
     char *ctype;
