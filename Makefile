@@ -1,12 +1,16 @@
 CC=gcc
-CFLAGS=-Wall
+CFLAGS=-c -g -Wall -Wextra
+LFLAGS=-Wall
 
 .PHONY: clean all
 
-all: proxy
+all: util.o proxy
 
-proxy: proxy.c
-	$(CC) $(CFLAGS) $^ -o $@
+proxy: proxy.c util.o
+	$(CC) $(LFLAGS) $^ -o $@
+
+util.o: util.c
+	$(CC) $(CFLAGS) $<
 
 clean:
 	rm -f proxy
