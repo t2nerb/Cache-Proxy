@@ -21,7 +21,7 @@ int main(int argc, char *argv[])
     print_config(&config_data);
 
     // Configure socket
-    sockfd = config_socket(config_data);
+    sockfd = config_socket(config_data.port);
 
     // Wait for incoming connections
     for (;;) {
@@ -73,9 +73,6 @@ void child_handler(int clientfd, struct ConfigData *config_data)
 
     // Recv data from the client
     recv_header(clientfd, header);
-    // if (recv(clientfd, recv_buff, MAX_BUF_SIZE, 0) > 0) {
-    //     // printf("HEADER: %s", recv_buff);
-    // }
 
     // Parse request
     parse_request(&req_params, header);
@@ -83,7 +80,7 @@ void child_handler(int clientfd, struct ConfigData *config_data)
     // TODO: Check if the requested data is cached
 
     // TODO: Retrieve data from server
-    retrieve_data(hostname, header, &req_params);
+    retrieve_data(clientfd, hostname, header, &req_params);
 
     // TODO: Send data back to client
 
@@ -106,16 +103,40 @@ void recv_header(int clientfd, char *recv_buff)
 }
 
 
-int retrieve_data(char *hostname, char *recv_buff, struct ReqParams *req_params)
+int retrieve_data(int sock, char *hostname, char *recv_buff, struct ReqParams *req_params)
+// int retrieve_data(char *hostname, char *recv_buff, struct ReqParams *req_params)
 {
     char dest_ip[INET_ADDRSTRLEN];
+    char get_data[MAX_BUF_SIZE];
+    int csock, rebytes;
 
+    // Perform DNS lookup for the requested url
     if (dnslookup(req_params->uri, dest_ip, sizeof(dest_ip)) < 0) {
+
         // A 400 error needs to be thrown here
-        printf("Bad URL\n");
+        printf("Bad URL: %s\n", req_params->uri);
         return -1;
     }
-    printf("DEST_IP: %s\n\n", dest_ip);
+
+    // Create socket with connection to url's IP
+    if ((csock = create_socket(dest_ip)) <=  0) {
+        printf("Something bad happened\n");
+        exit(-1);
+    }
+
+    // Send original request from client to the server
+    int sebytes = send(csock, recv_buff, MAX_HDR_SIZE, 0);
+    printf("SENT %d BYTES\n", sebytes);
+
+    // Receive the data
+    while ((rebytes = recv(csock, get_data, sizeof(get_data), 0)) > 0) {
+        printf("RECEIVED: %d bytes\n", rebytes);
+        send(sock, get_data, rebytes, 0);
+    }
+
+    // Cleanup
+    close(csock);
+
 
     return 1;
 }
@@ -128,25 +149,26 @@ void parse_request(struct ReqParams *req_params, char *recv_buff)
     char *line;
 
     // Split lines
-    token = strtok(recv_buff,"\n");
+    token = strtok(strdup(recv_buff),"\n");
 
-    // Only relevant information is in the first line
+    // Only relevant information is in the first line, remove http:// prefix
     line = strdup(token);
+    remove_elt(line, "http://");
 
     // Parse the three fields delimited by space in the line
     req_params->method = strdup(strtok(line, " "));
-    req_params->uri = strdup(strtok(NULL, ":"));
-    req_params->port = strdup(strtok(NULL, " "));
+    req_params->uri = strdup(strtok(NULL, "/"));
+    strtok(NULL, " ");
     req_params->version = strdup(strtok(NULL, " "));
 
     // Ugh stupid trailing random bytes
     req_params->version[8] = '\0';
 
-    printf("Method: %s\n", req_params->method);
-    printf("URI: %s\n", req_params->uri);
-    printf("PORT: %s\n", req_params->port);
-    printf("VERSION: %s\n", req_params->version);
+    // printf("Method: %s\n", req_params->method);
+    // printf("URI: %s\n", req_params->uri);
+    // printf("VERSION: %s\n", req_params->version);
 
+    free(token);
     free(line);
 }
 
@@ -175,18 +197,8 @@ void parse_cla(struct ConfigData *config_data, int argc, char *argv[])
 }
 
 
-void print_config(struct ConfigData *config_data)
-{
-    // Print all configurations options prettttty
-    printf("*************** t2PROXY ****************\n");
-    printf("*       PORT: %d\n", config_data->port);
-    printf("*    TIMEOUT: %d s\n", config_data->timeout);
-    printf("* EXPIRATION: %d ms\n", config_data->exp_timeout);
-    printf("****************************************\n\n");
-}
-
 // Bind to socket and listen on port
-int config_socket(struct ConfigData config_data)
+int config_socket(int port)
 {
     int sockfd;
     int enable = 1;
@@ -195,7 +207,7 @@ int config_socket(struct ConfigData config_data)
     // Populate sockaddr_in struct with configuration for socket
     bzero(&remote, sizeof(remote));
     remote.sin_family = AF_INET;
-    remote.sin_port = htons(config_data.port);
+    remote.sin_port = htons(port);
     remote.sin_addr.s_addr = INADDR_ANY;
 
     // Create a socket of type TCP
@@ -222,4 +234,54 @@ int config_socket(struct ConfigData config_data)
     }
 
     return sockfd;
+}
+
+int create_socket(char *dest_ip)
+{
+    struct sockaddr_in server;
+    struct timeval tv;
+
+    // Populate server struct
+    server.sin_addr.s_addr = inet_addr(dest_ip);
+    server.sin_family = AF_INET;
+    server.sin_port = htons(80);
+
+    // Populate sockopts
+    tv.tv_sec = 3;  // recv timeout in seconds
+    tv.tv_usec = 0;
+
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == -1) {
+        printf("Socket could not be created\n");
+        return -1;
+    }
+
+    // set sockoption to timeout after blocking for 3 seconds on recv
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv,sizeof(struct timeval));
+
+    // Try to connect
+    if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0) {
+        printf("Could not connect\n");
+        return -1;
+    }
+
+    return sock;
+}
+
+
+void print_config(struct ConfigData *config_data)
+{
+    // Print all configurations options prettttty
+    printf("*************** t2PROXY ****************\n");
+    printf("*       PORT: %d\n", config_data->port);
+    printf("*    TIMEOUT: %d s\n", config_data->timeout);
+    printf("* EXPIRATION: %d ms\n", config_data->exp_timeout);
+    printf("****************************************\n\n");
+}
+void remove_elt(char *og_str, const char *sub_str)
+{
+    while((og_str=strstr(og_str,sub_str)))
+    {
+        memmove(og_str,og_str+strlen(sub_str),1+strlen(og_str+strlen(sub_str)));
+    }
 }
