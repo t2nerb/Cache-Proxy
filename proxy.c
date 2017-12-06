@@ -75,7 +75,11 @@ void child_handler(int clientfd, struct ConfigData *config_data)
     recv_header(clientfd, header);
 
     // Parse request
-    parse_request(&req_params, header);
+    if (parse_request(&req_params, header) != 0) {
+        printf("I ignore non-gets!\n");
+        close(clientfd);
+        exit(0);
+    }
 
     // TODO: Check if the requested data is cached
 
@@ -85,6 +89,7 @@ void child_handler(int clientfd, struct ConfigData *config_data)
     // TODO: Send data back to client
 
     // TODO: Cleanup and free memory yo
+    close(clientfd);
 
     return;
 }
@@ -104,11 +109,11 @@ void recv_header(int clientfd, char *recv_buff)
 
 
 int retrieve_data(int sock, char *hostname, char *recv_buff, struct ReqParams *req_params)
-// int retrieve_data(char *hostname, char *recv_buff, struct ReqParams *req_params)
 {
     char dest_ip[INET_ADDRSTRLEN];
-    char get_data[MAX_BUF_SIZE];
-    int csock, rebytes;
+    char buff[MAX_BUF_SIZE];
+    char *get_data;
+    int csock, rebytes, total_bytes = 0;
 
     // Perform DNS lookup for the requested url
     if (dnslookup(req_params->uri, dest_ip, sizeof(dest_ip)) < 0) {
@@ -117,6 +122,7 @@ int retrieve_data(int sock, char *hostname, char *recv_buff, struct ReqParams *r
         printf("Bad URL: %s\n", req_params->uri);
         return -1;
     }
+    printf("DEST_IP: %s\n", dest_ip);
 
     // Create socket with connection to url's IP
     if ((csock = create_socket(dest_ip)) <=  0) {
@@ -125,16 +131,32 @@ int retrieve_data(int sock, char *hostname, char *recv_buff, struct ReqParams *r
     }
 
     // Send original request from client to the server
-    int sebytes = send(csock, recv_buff, MAX_HDR_SIZE, 0);
-    printf("SENT %d BYTES\n", sebytes);
+    send(csock, recv_buff, MAX_HDR_SIZE, 0);
 
     // Receive the data
-    while ((rebytes = recv(csock, get_data, sizeof(get_data), 0)) > 0) {
-        printf("RECEIVED: %d bytes\n", rebytes);
-        send(sock, get_data, rebytes, 0);
+    int count = 0;
+    while ((rebytes = recv(csock, buff, sizeof(buff), 0)) > 0) {
+        if (count == 0) {
+            get_data = malloc(rebytes);
+            memcpy(get_data, buff, rebytes);
+            // count++;
+        }
+        else {
+            get_data = realloc(get_data, rebytes);
+            memcpy(get_data + total_bytes, buff, rebytes);
+        }
+        send(sock, buff, rebytes, 0);
+        total_bytes += rebytes;
     }
 
+    // printf("%s\n", strtok(strdup(recv_buff), "\r\n"));
+    // printf("TOTAL BYTES READ: %d\n", total_bytes);
+
+    // int sebytes = send(sock, get_data, total_bytes, 0);
+    // printf("BYTES SENT: %d BYTES\n\n", sebytes);
+
     // Cleanup
+    free(get_data);
     close(csock);
 
 
@@ -143,26 +165,29 @@ int retrieve_data(int sock, char *hostname, char *recv_buff, struct ReqParams *r
 
 
 // Parse GET request from client and store into struct
-void parse_request(struct ReqParams *req_params, char *recv_buff)
+int parse_request(struct ReqParams *req_params, char *recv_buff)
 {
     char *token;
     char *line;
 
     // Split lines
     token = strtok(strdup(recv_buff),"\n");
+    printf("%s\n", token);
 
     // Only relevant information is in the first line, remove http:// prefix
     line = strdup(token);
     remove_elt(line, "http://");
 
-    // Parse the three fields delimited by space in the line
+    // Only need to parse method to check if allowed by proxy
+    // and uri to perform dnslookup on
+    printf("I'm here\n");
     req_params->method = strdup(strtok(line, " "));
-    req_params->uri = strdup(strtok(NULL, "/"));
-    strtok(NULL, " ");
-    req_params->version = strdup(strtok(NULL, " "));
 
-    // Ugh stupid trailing random bytes
-    req_params->version[8] = '\0';
+    req_params->uri = strdup(strtok(NULL, "/"));
+
+    // strtok(NULL, " ");
+    // req_params->version = strdup(strtok(NULL, " "));
+    printf("Parsed everything\n");
 
     // printf("Method: %s\n", req_params->method);
     // printf("URI: %s\n", req_params->uri);
@@ -170,6 +195,8 @@ void parse_request(struct ReqParams *req_params, char *recv_buff)
 
     free(token);
     free(line);
+
+    return (strcmp(req_params->method, "GET") == 0) ? 0 : -1;
 }
 
 

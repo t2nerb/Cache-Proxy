@@ -1,8 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
 #include <sys/types.h>
+#include <sys/wait.h>
+#include <netinet/in.h>
 #include <errno.h>
 #include <unistd.h>
 #include <string.h>
@@ -36,7 +37,7 @@ int create_socket(char *dest_ip);
 void child_handler(int clientfd, struct ConfigData *config_data);
 void parse_cla(struct ConfigData *config_data, int argc, char *argv[]);
 void print_config(struct ConfigData *config_data);
-void parse_request(struct ReqParams *req_params, char *recv_buff);
+int parse_request(struct ReqParams *req_params, char *recv_buff);
 // int retrieve_data(char *hostname, char *recv_buff, struct ReqParams *req_params);
 int retrieve_data(int sock, char *hostname, char *recv_buff, struct ReqParams *req_params);
 void recv_header(int clientfd, char *recv_buff);
