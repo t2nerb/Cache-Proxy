@@ -69,6 +69,7 @@ void child_handler(int clientfd, struct ConfigData *config_data)
 {
     char hostname[] = "www.facebook.com";
     char header[MAX_HDR_SIZE];
+    char header_hash[MD5_DIGEST_LENGTH];
     struct ReqParams req_params;
 
     // Recv data from the client
@@ -81,17 +82,60 @@ void child_handler(int clientfd, struct ConfigData *config_data)
         exit(0);
     }
 
-    // TODO: Check if the requested data is cached
+    // Hash the request header
+    md5_string(header, header_hash);
 
-    // TODO: Retrieve data from server
-    retrieve_data(clientfd, hostname, header, &req_params);
+    // Check if the requested data is cached
+    if (search_cache(header_hash) == 0) {
+        // Retrieve data from server and write to cache
+        retrieve_data(clientfd, hostname, header, req_params.uri, header_hash);
+    }
 
-    // TODO: Send data back to client
+    // Send data back to client
+    send_file(clientfd, header_hash);
 
-    // TODO: Cleanup and free memory yo
+    // TODO: Run routine to check if cached files are too old
+
+    // Cleanup and free memory yo
     close(clientfd);
 
     return;
+}
+
+
+void send_file(int clientfd, char *header_hash)
+{
+    char fpath[MAX_FP_SIZE];
+    char buffer[MAX_BUF_SIZE];
+    FILE *fp;
+    int rbytes;
+
+    strcpy(fpath, "./Cache/");
+    strcat(fpath, header_hash);
+
+    fp = fopen(fpath, "rb");
+    while ((rbytes = fread(buffer, 1, MAX_BUF_SIZE, fp)) > 0) {
+        send(clientfd, buffer, rbytes, 0);
+    }
+
+    return;
+}
+
+int search_cache(char *header_hash)
+{
+    char fpath[MAX_FP_SIZE];
+
+    strcpy(fpath, "./Cache/");
+    strcat(fpath, header_hash);
+
+    if( access(fpath, F_OK ) != -1 ) {
+        // file exists
+        printf("File exists!\n");
+    } else {
+        printf("File does not exist!\n");
+    }
+
+    return 0;
 }
 
 
@@ -108,21 +152,20 @@ void recv_header(int clientfd, char *recv_buff)
 }
 
 
-int retrieve_data(int sock, char *hostname, char *recv_buff, struct ReqParams *req_params)
+int retrieve_data(int sock, char *hostname, char *recv_buff, char *url, char *hash)
 {
     char dest_ip[INET_ADDRSTRLEN];
     char buff[MAX_BUF_SIZE];
-    char *get_data;
+    char fpath[MAX_FP_SIZE];
     int csock, rebytes, total_bytes = 0;
 
     // Perform DNS lookup for the requested url
-    if (dnslookup(req_params->uri, dest_ip, sizeof(dest_ip)) < 0) {
+    if (dnslookup(url, dest_ip, sizeof(dest_ip)) < 0) {
 
         // A 400 error needs to be thrown here
-        printf("Bad URL: %s\n", req_params->uri);
+        printf("Bad URL: %s\n", url);
         return -1;
     }
-    printf("DEST_IP: %s\n", dest_ip);
 
     // Create socket with connection to url's IP
     if ((csock = create_socket(dest_ip)) <=  0) {
@@ -131,36 +174,40 @@ int retrieve_data(int sock, char *hostname, char *recv_buff, struct ReqParams *r
     }
 
     // Send original request from client to the server
-    send(csock, recv_buff, MAX_HDR_SIZE, 0);
+    safe_send(csock, recv_buff, MAX_HDR_SIZE);
 
-    // Receive the data
-    int count = 0;
+    // Create path for cache
+    strcpy(fpath, "./Cache/");
+    strcat(fpath, hash);
+    printf("CACHE FILEPATH: %s\n", fpath);
+
+    // Receive the data and write to file
+    FILE *cachefp = fopen(fpath, "wb");
     while ((rebytes = recv(csock, buff, sizeof(buff), 0)) > 0) {
-        if (count == 0) {
-            get_data = malloc(rebytes);
-            memcpy(get_data, buff, rebytes);
-            // count++;
-        }
-        else {
-            get_data = realloc(get_data, rebytes);
-            memcpy(get_data + total_bytes, buff, rebytes);
-        }
-        send(sock, buff, rebytes, 0);
+        // safe_send(sock, buff, rebytes);
+        fwrite(buff, 1, rebytes, cachefp);
         total_bytes += rebytes;
     }
 
-    // printf("%s\n", strtok(strdup(recv_buff), "\r\n"));
-    // printf("TOTAL BYTES READ: %d\n", total_bytes);
-
-    // int sebytes = send(sock, get_data, total_bytes, 0);
-    // printf("BYTES SENT: %d BYTES\n\n", sebytes);
-
     // Cleanup
-    free(get_data);
     close(csock);
+    fclose(cachefp);
 
 
     return 1;
+}
+
+
+// Ensure that nbytes of content is sent to outsock
+void safe_send(int outsock, char *content, int nbytes)
+{
+    int sebytes;
+
+    sebytes = send(outsock, content, nbytes, 0);
+    while (sebytes < nbytes) {
+        sebytes += send(outsock, content+sebytes, nbytes-sebytes, 0);
+    }
+    return;
 }
 
 
@@ -172,7 +219,7 @@ int parse_request(struct ReqParams *req_params, char *recv_buff)
 
     // Split lines
     token = strtok(strdup(recv_buff),"\n");
-    printf("%s\n", token);
+    // printf("%s\n", token);
 
     // Only relevant information is in the first line, remove http:// prefix
     line = strdup(token);
@@ -180,19 +227,12 @@ int parse_request(struct ReqParams *req_params, char *recv_buff)
 
     // Only need to parse method to check if allowed by proxy
     // and uri to perform dnslookup on
-    printf("I'm here\n");
     req_params->method = strdup(strtok(line, " "));
-
     req_params->uri = strdup(strtok(NULL, "/"));
 
-    // strtok(NULL, " ");
-    // req_params->version = strdup(strtok(NULL, " "));
-    printf("Parsed everything\n");
 
-    // printf("Method: %s\n", req_params->method);
-    // printf("URI: %s\n", req_params->uri);
-    // printf("VERSION: %s\n", req_params->version);
 
+    // Cleanup
     free(token);
     free(line);
 
@@ -295,6 +335,24 @@ int create_socket(char *dest_ip)
     return sock;
 }
 
+void md5_string(char* buffer, char* hash)
+{
+    unsigned char digest[16];
+
+
+    MD5_CTX ctx;
+    MD5_Init(&ctx);
+    MD5_Update(&ctx, buffer, strlen(buffer));
+    MD5_Final(digest, &ctx);
+
+    char mdString[33];
+    for (int i = 0; i < 16; i++)
+        sprintf(&mdString[i*2], "%02x", (unsigned int)digest[i]);
+
+    strcpy(hash, mdString);
+
+    return;
+}
 
 void print_config(struct ConfigData *config_data)
 {
