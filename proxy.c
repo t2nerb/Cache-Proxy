@@ -77,7 +77,6 @@ void child_handler(int clientfd, struct ConfigData *config_data)
 
     // Parse request
     if (parse_request(&req_params, header) != 0) {
-        printf("I ignore non-gets!\n");
         close(clientfd);
         exit(0);
     }
@@ -86,8 +85,8 @@ void child_handler(int clientfd, struct ConfigData *config_data)
     md5_string(header, header_hash);
 
     // Check if the requested data is cached
+    // If not retrieve data from server and write to cache
     if (search_cache(header_hash) == 0) {
-        // Retrieve data from server and write to cache
         retrieve_data(clientfd, hostname, header, req_params.uri, header_hash);
     }
 
@@ -129,13 +128,13 @@ int search_cache(char *header_hash)
     strcat(fpath, header_hash);
 
     if( access(fpath, F_OK ) != -1 ) {
-        // file exists
         printf("File exists!\n");
-    } else {
-        printf("File does not exist!\n");
+        return 1;
     }
-
-    return 0;
+    else {
+        printf("File does not exist!\n");
+        return 0;
+    }
 }
 
 
@@ -338,18 +337,23 @@ int create_socket(char *dest_ip)
 void md5_string(char* buffer, char* hash)
 {
     unsigned char digest[16];
+    char *tmp, *firstline;
 
+    // Relevant data retrieval is determined in first line
+    tmp = strdup(buffer);
+    firstline = strtok(tmp, "\n");
 
     MD5_CTX ctx;
     MD5_Init(&ctx);
-    MD5_Update(&ctx, buffer, strlen(buffer));
+    MD5_Update(&ctx, firstline, strlen(firstline));
     MD5_Final(digest, &ctx);
 
     char mdString[33];
     for (int i = 0; i < 16; i++)
         sprintf(&mdString[i*2], "%02x", (unsigned int)digest[i]);
-
     strcpy(hash, mdString);
+
+    free(tmp);
 
     return;
 }
