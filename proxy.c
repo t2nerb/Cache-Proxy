@@ -69,7 +69,8 @@ void child_handler(int clientfd, struct ConfigData *config_data)
 {
     char hostname[] = "www.facebook.com";
     char header[MAX_HDR_SIZE];
-    char header_hash[MD5_DIGEST_LENGTH];
+    // char header_hash[MD5_DIGEST_LENGTH];
+    char *header_hash;
     struct ReqParams req_params;
 
     // Recv data from the client
@@ -82,16 +83,18 @@ void child_handler(int clientfd, struct ConfigData *config_data)
     }
 
     // Hash the request header
-    md5_string(header, header_hash);
+    header_hash = md5_string(header);
 
     // Check if the requested data is cached
-    // If not retrieve data from server and write to cache
     if (search_cache(header_hash) == 0) {
+        // If not retrieve data from server, write to cache and send
         retrieve_data(clientfd, hostname, header, req_params.uri, header_hash);
     }
+    else {
+        // Send data from cache to client
+        send_file(clientfd, header_hash);
+    }
 
-    // Send data back to client
-    send_file(clientfd, header_hash);
 
     // TODO: Run routine to check if cached files are too old
 
@@ -128,11 +131,9 @@ int search_cache(char *header_hash)
     strcat(fpath, header_hash);
 
     if( access(fpath, F_OK ) != -1 ) {
-        printf("File exists!\n");
         return 1;
     }
     else {
-        printf("File does not exist!\n");
         return 0;
     }
 }
@@ -158,9 +159,10 @@ int retrieve_data(int sock, char *hostname, char *recv_buff, char *url, char *ha
     char fpath[MAX_FP_SIZE];
     int csock, rebytes, total_bytes = 0;
 
+    // TODO: Check if hostname ip address is cached
+
     // Perform DNS lookup for the requested url
     if (dnslookup(url, dest_ip, sizeof(dest_ip)) < 0) {
-
         // A 400 error needs to be thrown here
         printf("Bad URL: %s\n", url);
         return -1;
@@ -178,12 +180,12 @@ int retrieve_data(int sock, char *hostname, char *recv_buff, char *url, char *ha
     // Create path for cache
     strcpy(fpath, "./Cache/");
     strcat(fpath, hash);
-    printf("CACHE FILEPATH: %s\n", fpath);
+    printf("CACHED CONTENT: %s\n", hash);
 
     // Receive the data and write to file
     FILE *cachefp = fopen(fpath, "wb");
     while ((rebytes = recv(csock, buff, sizeof(buff), 0)) > 0) {
-        // safe_send(sock, buff, rebytes);
+        safe_send(sock, buff, rebytes);
         fwrite(buff, 1, rebytes, cachefp);
         total_bytes += rebytes;
     }
@@ -334,10 +336,11 @@ int create_socket(char *dest_ip)
     return sock;
 }
 
-void md5_string(char* buffer, char* hash)
+char *md5_string(char* buffer)
 {
     unsigned char digest[16];
     char *tmp, *firstline;
+    char *hash;
 
     // Relevant data retrieval is determined in first line
     tmp = strdup(buffer);
@@ -351,11 +354,12 @@ void md5_string(char* buffer, char* hash)
     char mdString[33];
     for (int i = 0; i < 16; i++)
         sprintf(&mdString[i*2], "%02x", (unsigned int)digest[i]);
+    hash = malloc(strlen(mdString));
     strcpy(hash, mdString);
 
     free(tmp);
 
-    return;
+    return hash;
 }
 
 void print_config(struct ConfigData *config_data)
