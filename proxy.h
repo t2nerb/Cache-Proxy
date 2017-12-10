@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <limits.h>
+#include <time.h>
 #include <openssl/md5.h>
 
 #define MAX_NS_SIZE 128
@@ -33,6 +34,11 @@ struct ReqParams {
     char *ctype;
 };
 
+struct CacheParams {
+    char *hash;
+    unsigned int time;
+};
+
 int config_socket(int port);
 void remove_elt(char *og_str, const char *sub_str);
 int create_socket(char *dest_ip);
@@ -40,7 +46,7 @@ void child_handler(int clientfd, struct ConfigData *config_data);
 void parse_cla(struct ConfigData *config_data, int argc, char *argv[]);
 void print_config(struct ConfigData *config_data);
 int parse_request(struct ReqParams *req_params, char *recv_buff);
-int retrieve_data(int sock, char *hostname, char *recv_buff, char *url, char *hash);
+int retrieve_data(int sock, char *recv_buff, char *url, char *hash);
 void recv_header(int clientfd, char *recv_buff);
 void safe_send(int outsock, char *content, int nbytes);
 // void md5_string(char* buffer, char* hash);

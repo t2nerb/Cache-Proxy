@@ -1,6 +1,7 @@
 #include "proxy.h"
 #include "util.h"
 
+
 int main(int argc, char *argv[])
 {
     if (argc < 2) {
@@ -67,9 +68,7 @@ int main(int argc, char *argv[])
 // Cache the data received from server and set timeout value
 void child_handler(int clientfd, struct ConfigData *config_data)
 {
-    char hostname[] = "www.facebook.com";
     char header[MAX_HDR_SIZE];
-    // char header_hash[MD5_DIGEST_LENGTH];
     char *header_hash;
     struct ReqParams req_params;
 
@@ -82,13 +81,15 @@ void child_handler(int clientfd, struct ConfigData *config_data)
         exit(0);
     }
 
+    // TODO: Check if hostname or IP is blocked
+
     // Hash the request header
     header_hash = md5_string(header);
 
     // Check if the requested data is cached
     if (search_cache(header_hash) == 0) {
         // If not retrieve data from server, write to cache and send
-        retrieve_data(clientfd, hostname, header, req_params.uri, header_hash);
+        retrieve_data(clientfd, header, req_params.uri, header_hash);
     }
     else {
         // Send data from cache to client
@@ -152,7 +153,7 @@ void recv_header(int clientfd, char *recv_buff)
 }
 
 
-int retrieve_data(int sock, char *hostname, char *recv_buff, char *url, char *hash)
+int retrieve_data(int sock, char *recv_buff, char *url, char *hash)
 {
     char dest_ip[INET_ADDRSTRLEN];
     char buff[MAX_BUF_SIZE];
@@ -315,7 +316,7 @@ int create_socket(char *dest_ip)
     server.sin_port = htons(80);
 
     // Populate sockopts
-    tv.tv_sec = 3;  // recv timeout in seconds
+    tv.tv_sec = 10;  // recv timeout in seconds
     tv.tv_usec = 0;
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
