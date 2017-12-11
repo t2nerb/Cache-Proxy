@@ -5,7 +5,7 @@
 int main(int argc, char *argv[])
 {
     if (argc < 2) {
-        printf("Usage: ./proxy <port_num>\n");
+        printf("Usage: ./proxy <port_num> -t <timeout>\n");
         exit(-1);
     }
 
@@ -82,6 +82,7 @@ void child_handler(int clientfd, struct ConfigData *config_data)
     }
 
     // TODO: Check if hostname or IP is blocked
+    check_if_blocked(req_params.uri);
 
     // Hash the request header
     header_hash = md5_string(header);
@@ -103,6 +104,34 @@ void child_handler(int clientfd, struct ConfigData *config_data)
     close(clientfd);
 
     return;
+}
+
+
+void check_if_blocked(char *uri)
+{
+    FILE *fp;
+    char conf_line[MAX_BUF_SIZE];
+
+    fp = fopen("./blocklist.txt", "r");
+    if (!fp) {
+        perror("Could not find blocklist");
+        exit(-1);
+    }
+
+    while (fgets(conf_line, sizeof(conf_line), fp)) {
+
+        // Remove crap from config format
+        remove_elt(conf_line, "http");
+        remove_elt(conf_line, "/");
+        remove_elt(conf_line, ":");
+
+        if (strncmp(uri, conf_line, strlen(uri)) == 0) {
+            printf("BLOCKED: %s\n", uri);
+            exit(0);
+        }
+
+    }
+
 }
 
 
@@ -220,8 +249,7 @@ int parse_request(struct ReqParams *req_params, char *recv_buff)
     char *line;
 
     // Split lines
-    token = strtok(strdup(recv_buff),"\n");
-    // printf("%s\n", token);
+    token = strtok(strdup(recv_buff),"\r\n");
 
     // Only relevant information is in the first line, remove http:// prefix
     line = strdup(token);
@@ -255,9 +283,6 @@ void parse_cla(struct ConfigData *config_data, int argc, char *argv[])
     for (int i = 2; i < argc; i++) {
 
         if (strcmp(argv[i], "-t") == 0) {
-            config_data->timeout = atoi(argv[++i]);
-        }
-        else if (strcmp(argv[i], "-e") == 0) {
             config_data->exp_timeout = atoi(argv[++i]);
         }
     }
@@ -368,7 +393,6 @@ void print_config(struct ConfigData *config_data)
     // Print all configurations options prettttty
     printf("*************** t2PROXY ****************\n");
     printf("*       PORT: %d\n", config_data->port);
-    printf("*    TIMEOUT: %d s\n", config_data->timeout);
     printf("* EXPIRATION: %d ms\n", config_data->exp_timeout);
     printf("****************************************\n\n");
 }

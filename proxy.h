@@ -20,7 +20,6 @@
 
 struct ConfigData {
     int port;
-    int timeout;
     unsigned int exp_timeout;
     char *nsblock[MAX_NS_SIZE];
 };
@@ -49,7 +48,7 @@ int parse_request(struct ReqParams *req_params, char *recv_buff);
 int retrieve_data(int sock, char *recv_buff, char *url, char *hash);
 void recv_header(int clientfd, char *recv_buff);
 void safe_send(int outsock, char *content, int nbytes);
-// void md5_string(char* buffer, char* hash);
 char *md5_string(char* buffer);
 int search_cache(char *header_hash);
 void send_file(int clientfd, char *header_hash);
+void check_if_blocked(char *uri);
