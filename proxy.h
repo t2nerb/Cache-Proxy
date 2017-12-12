@@ -17,6 +17,8 @@
 #define MAX_FP_SIZE 64
 #define MAX_HDR_SIZE 8192
 #define HOST_NAME_MAX 64
+#define CACHE_DIRECTORY "./Cache/"
+#define HOSTS_PATH "./Cache/hosts"
 
 
 struct ConfigData {
@@ -36,7 +38,8 @@ struct CacheParams {
 };
 
 int config_socket(int port);
-int search_cache(char *header_hash);
+// int search_cache(char *header_hash);
+int search_cache(char *header_hash, struct ConfigData *config_data);
 int create_socket(char *dest_ip);
 int parse_request(struct ReqParams *req_params, char *recv_buff);
 int retrieve_data(int sock, char *recv_buff, char *url, char *hash);

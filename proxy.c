@@ -91,7 +91,7 @@ void child_handler(int clientfd, struct ConfigData *config_data)
     header_hash = md5_string(header);
 
     // Check if the requested data is cached
-    if (search_cache(header_hash) == 0) {
+    if (search_cache(header_hash, config_data) == 0) {
         // If not retrieve data from server, write to cache and send
         retrieve_data(clientfd, header, req_params.uri, header_hash);
     }
@@ -143,7 +143,7 @@ void send_file(int clientfd, char *header_hash)
     FILE *fp;
     int rbytes;
 
-    strcpy(fpath, "./Cache/");
+    strcpy(fpath, CACHE_DIRECTORY);
     strcat(fpath, header_hash);
 
     fp = fopen(fpath, "rb");
@@ -154,20 +154,34 @@ void send_file(int clientfd, char *header_hash)
     return;
 }
 
-int search_cache(char *header_hash)
+int search_cache(char *header_hash, struct ConfigData *config_data)
 {
     // struct stat attrib;
     char fpath[MAX_FP_SIZE];
-    char dir[] = "./Cache/";
+    struct stat fileinfo;
+    time_t mytime;
+    double diff;
 
-    strcpy(fpath, dir);
+    strcpy(fpath, CACHE_DIRECTORY);
     strcat(fpath, header_hash);
 
-    // TODO: Get age of file
-
-
+    // Check if file exists
     if( access(fpath, F_OK ) != -1 ) {
-        return 1;
+
+        // Get age of file
+        stat(fpath, &fileinfo);
+        time(&mytime);
+        ctime(&fileinfo.st_mtime);
+
+        diff = difftime(mytime, fileinfo.st_mtime);
+        if (diff > config_data->exp_timeout) {
+            printf("EXPIRED: %s\n", header_hash);
+            return 0;
+        }
+        else {
+            return 1;
+        }
+
     }
     else {
         return 0;
@@ -191,12 +205,11 @@ int lookup_ip(char *url, char *dest_ip)
 {
     char cache_line[MAX_BUF_SIZE];
     char write_line[MAX_BUF_SIZE];
-    char *hostname_fpath = "./Cache/hosts";
     char *cache_format = "%s*%s\n";
     FILE *hostname_fp, *write_fp;
 
-    write_fp = fopen(hostname_fpath, "a");
-    hostname_fp = fopen(hostname_fpath, "r");
+    write_fp = fopen(HOSTS_PATH, "a");
+    hostname_fp = fopen(HOSTS_PATH, "r");
 
     // Check if url has IP cached in file
     while (fgets(cache_line, sizeof(cache_line), hostname_fp)) {
@@ -261,7 +274,7 @@ int retrieve_data(int sock, char *recv_buff, char *url, char *hash)
     safe_send(csock, recv_buff, MAX_HDR_SIZE);
 
     // Create path for cache
-    strcpy(fpath, "./Cache/");
+    strcpy(fpath, CACHE_DIRECTORY);
     strcat(fpath, hash);
     printf("CACHED CONTENT: %s\n", hash);
 
@@ -323,19 +336,17 @@ int parse_request(struct ReqParams *req_params, char *recv_buff)
 
 void create_cachedir()
 {
-    char cachedir[] = "./Cache/";
-    char hostnamecache[] = "./Cache/hosts";
     FILE *hostname_fp;
 
     // If directory doesn't exist, make the directory
-    mkdir(cachedir, 0700);
-    printf("CREATED CACHE DIRECTORY: %s\n", cachedir);
+    mkdir(CACHE_DIRECTORY, 0700);
+    printf("CREATED CACHE DIRECTORY: %s\n", CACHE_DIRECTORY);
 
     // Create hostname file
-    hostname_fp = fopen(hostnamecache, "w");
+    hostname_fp = fopen(HOSTS_PATH, "w");
     fprintf(hostname_fp, "localhost*127.0.0.1\n");
     fclose(hostname_fp);
-    printf("CREATED HOSTNAME CACHE: %s\n", hostnamecache);
+    printf("CREATED HOSTNAME CACHE: %s\n", HOSTS_PATH);
 
 }
 
@@ -463,7 +474,7 @@ void print_config(struct ConfigData *config_data)
     // Print all configurations options prettttty
     printf("*************** t2PROXY ****************\n");
     printf("*       PORT: %d\n", config_data->port);
-    printf("* EXPIRATION: %d ms\n", config_data->exp_timeout);
+    printf("* EXPIRATION: %d s\n", config_data->exp_timeout);
     printf("*   CACHEDIR: ./Cache\n");
     printf("****************************************\n\n");
 }
