@@ -21,8 +21,8 @@ int main(int argc, char *argv[])
     // Print configuration options
     print_config(&config_data);
 
-    // Create cache dir
-    check_cache();
+    // Create cache dir if it doesn't exist
+    create_cachedir();
 
     // Configure socket
     sockfd = config_socket(config_data.port);
@@ -101,8 +101,6 @@ void child_handler(int clientfd, struct ConfigData *config_data)
     }
 
 
-    // TODO: Run routine to check if cached files are too old
-
     // Cleanup and free memory yo
     close(clientfd);
 
@@ -118,12 +116,12 @@ void check_if_blocked(char *address)
     fp = fopen("./blocklist.txt", "r");
     if (!fp) {
         perror("Could not find blocklist");
-        exit(-1);
+        return;
     }
 
     while (fgets(conf_line, sizeof(conf_line), fp)) {
 
-        // Remove crap from config format
+        // Remove crap from hostname; Should not affect IP addresses
         remove_elt(conf_line, "http");
         remove_elt(conf_line, "/");
         remove_elt(conf_line, ":");
@@ -165,7 +163,7 @@ int search_cache(char *header_hash)
     strcpy(fpath, dir);
     strcat(fpath, header_hash);
 
-    // Get age of file
+    // TODO: Get age of file
 
 
     if( access(fpath, F_OK ) != -1 ) {
@@ -189,6 +187,48 @@ void recv_header(int clientfd, char *recv_buff)
     return;
 }
 
+int lookup_ip(char *url, char *dest_ip)
+{
+    char cache_line[MAX_BUF_SIZE];
+    char write_line[MAX_BUF_SIZE];
+    char *hostname_fpath = "./Cache/hosts";
+    char *cache_format = "%s*%s\n";
+    FILE *hostname_fp, *write_fp;
+
+    write_fp = fopen(hostname_fpath, "a");
+    hostname_fp = fopen(hostname_fpath, "r");
+
+    // Check if url has IP cached in file
+    while (fgets(cache_line, sizeof(cache_line), hostname_fp)) {
+        char *hostname, *ip_addr;
+
+        hostname = strtok(cache_line, "*");
+        ip_addr = strtok(NULL, "\n");
+
+        if (strcmp(hostname, url) == 0) {
+            strcpy(dest_ip, ip_addr);
+            return 1;
+        }
+
+    }
+
+    // Perform dnslookup on url
+    if (dnslookup(url, dest_ip, INET_ADDRSTRLEN) < 0) {
+        printf("BAD URL: %s\n", url);
+        return -1;
+    }
+
+    // Write the hostname:ip_addr pair to file
+    snprintf(write_line, sizeof(write_line), cache_format, url, dest_ip);
+    fwrite(write_line, 1, strlen(write_line), write_fp);
+
+    // Cleanup
+    fclose(hostname_fp);
+    fclose(write_fp);
+
+    return 1;
+}
+
 
 int retrieve_data(int sock, char *recv_buff, char *url, char *hash)
 {
@@ -197,16 +237,18 @@ int retrieve_data(int sock, char *recv_buff, char *url, char *hash)
     char fpath[MAX_FP_SIZE];
     int csock, rebytes, total_bytes = 0;
 
-    // TODO: Check if hostname ip address is cached
-
-    // Perform DNS lookup for the requested url
-    if (dnslookup(url, dest_ip, sizeof(dest_ip)) < 0) {
-        // A 400 error needs to be thrown here
-        printf("Bad URL: %s\n", url);
+    if (lookup_ip(url, dest_ip) < 0) {
         return -1;
     }
 
-    // TODO: Check if IP is blocked
+    // Perform DNS lookup for the requested url
+    // if (dnslookup(url, dest_ip, sizeof(dest_ip)) < 0) {
+    //     // A 400 error needs to be thrown here
+    //     printf("Bad URL: %s\n", url);
+    //     return -1;
+    // }
+
+    // Check if IP is blocked
     check_if_blocked(dest_ip);
 
     // Create socket with connection to url's IP
@@ -271,8 +313,6 @@ int parse_request(struct ReqParams *req_params, char *recv_buff)
     req_params->method = strdup(strtok(line, " "));
     req_params->uri = strdup(strtok(NULL, "/"));
 
-
-
     // Cleanup
     free(token);
     free(line);
@@ -281,16 +321,21 @@ int parse_request(struct ReqParams *req_params, char *recv_buff)
 }
 
 
-void check_cache()
+void create_cachedir()
 {
     char cachedir[] = "./Cache/";
-    struct stat st = {0};
+    char hostnamecache[] = "./Cache/hosts";
+    FILE *hostname_fp;
 
     // If directory doesn't exist, make the directory
-    if (stat(cachedir, &st) == -1) {
-        printf("CREATED CACHE DIRECTORY: %s\n", cachedir);
-        mkdir(cachedir, 0700);
-    }
+    mkdir(cachedir, 0700);
+    printf("CREATED CACHE DIRECTORY: %s\n", cachedir);
+
+    // Create hostname file
+    hostname_fp = fopen(hostnamecache, "w");
+    fprintf(hostname_fp, "localhost*127.0.0.1\n");
+    fclose(hostname_fp);
+    printf("CREATED HOSTNAME CACHE: %s\n", hostnamecache);
 
 }
 
@@ -419,6 +464,7 @@ void print_config(struct ConfigData *config_data)
     printf("*************** t2PROXY ****************\n");
     printf("*       PORT: %d\n", config_data->port);
     printf("* EXPIRATION: %d ms\n", config_data->exp_timeout);
+    printf("*   CACHEDIR: ./Cache\n");
     printf("****************************************\n\n");
 }
 void remove_elt(char *og_str, const char *sub_str)

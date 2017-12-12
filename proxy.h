@@ -22,15 +22,12 @@
 struct ConfigData {
     int port;
     unsigned int exp_timeout;
-    char *nsblock[MAX_NS_SIZE];
 };
 
 struct ReqParams {
     char *host;
     char *uri;
-    char *version;
     char *method;
-    char *ctype;
 };
 
 struct CacheParams {
@@ -39,17 +36,18 @@ struct CacheParams {
 };
 
 int config_socket(int port);
-void remove_elt(char *og_str, const char *sub_str);
+int search_cache(char *header_hash);
 int create_socket(char *dest_ip);
+int parse_request(struct ReqParams *req_params, char *recv_buff);
+int retrieve_data(int sock, char *recv_buff, char *url, char *hash);
+int lookup_ip(char *url, char *dest_ip);
+char *md5_string(char* buffer);
+void recv_header(int clientfd, char *recv_buff);
+void safe_send(int outsock, char *content, int nbytes);
+void remove_elt(char *og_str, const char *sub_str);
 void child_handler(int clientfd, struct ConfigData *config_data);
 void parse_cla(struct ConfigData *config_data, int argc, char *argv[]);
 void print_config(struct ConfigData *config_data);
-int parse_request(struct ReqParams *req_params, char *recv_buff);
-int retrieve_data(int sock, char *recv_buff, char *url, char *hash);
-void recv_header(int clientfd, char *recv_buff);
-void safe_send(int outsock, char *content, int nbytes);
-char *md5_string(char* buffer);
-int search_cache(char *header_hash);
 void send_file(int clientfd, char *header_hash);
 void check_if_blocked(char *uri);
-void check_cache();
+void create_cachedir();
