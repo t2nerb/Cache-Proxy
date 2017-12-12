@@ -21,6 +21,9 @@ int main(int argc, char *argv[])
     // Print configuration options
     print_config(&config_data);
 
+    // Create cache dir
+    check_cache();
+
     // Configure socket
     sockfd = config_socket(config_data.port);
 
@@ -275,6 +278,20 @@ int parse_request(struct ReqParams *req_params, char *recv_buff)
     free(line);
 
     return (strcmp(req_params->method, "GET") == 0) ? 0 : -1;
+}
+
+
+void check_cache()
+{
+    char cachedir[] = "./Cache/";
+    struct stat st = {0};
+
+    // If directory doesn't exist, make the directory
+    if (stat(cachedir, &st) == -1) {
+        printf("CREATED CACHE DIRECTORY: %s\n", cachedir);
+        mkdir(cachedir, 0700);
+    }
+
 }
 
 

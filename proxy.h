@@ -52,3 +52,4 @@ char *md5_string(char* buffer);
 int search_cache(char *header_hash);
 void send_file(int clientfd, char *header_hash);
 void check_if_blocked(char *uri);
+void check_cache();
