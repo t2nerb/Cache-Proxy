@@ -81,7 +81,7 @@ void child_handler(int clientfd, struct ConfigData *config_data)
         exit(0);
     }
 
-    // TODO: Check if hostname or IP is blocked
+    // Check if IP is blocked
     check_if_blocked(req_params.uri);
 
     // Hash the request header
@@ -107,7 +107,7 @@ void child_handler(int clientfd, struct ConfigData *config_data)
 }
 
 
-void check_if_blocked(char *uri)
+void check_if_blocked(char *address)
 {
     FILE *fp;
     char conf_line[MAX_BUF_SIZE];
@@ -125,8 +125,8 @@ void check_if_blocked(char *uri)
         remove_elt(conf_line, "/");
         remove_elt(conf_line, ":");
 
-        if (strncmp(uri, conf_line, strlen(uri)) == 0) {
-            printf("BLOCKED: %s\n", uri);
+        if (strncmp(address, conf_line, strlen(address)) == 0) {
+            printf("BLOCKED: %s\n", address);
             exit(0);
         }
 
@@ -155,10 +155,15 @@ void send_file(int clientfd, char *header_hash)
 
 int search_cache(char *header_hash)
 {
+    // struct stat attrib;
     char fpath[MAX_FP_SIZE];
+    char dir[] = "./Cache/";
 
-    strcpy(fpath, "./Cache/");
+    strcpy(fpath, dir);
     strcat(fpath, header_hash);
+
+    // Get age of file
+
 
     if( access(fpath, F_OK ) != -1 ) {
         return 1;
@@ -197,6 +202,9 @@ int retrieve_data(int sock, char *recv_buff, char *url, char *hash)
         printf("Bad URL: %s\n", url);
         return -1;
     }
+
+    // TODO: Check if IP is blocked
+    check_if_blocked(dest_ip);
 
     // Create socket with connection to url's IP
     if ((csock = create_socket(dest_ip)) <=  0) {
@@ -341,7 +349,7 @@ int create_socket(char *dest_ip)
     server.sin_port = htons(80);
 
     // Populate sockopts
-    tv.tv_sec = 10;  // recv timeout in seconds
+    tv.tv_sec = 3;  // recv timeout in seconds
     tv.tv_usec = 0;
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);

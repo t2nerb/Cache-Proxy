@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <errno.h>
 #include <unistd.h>
@@ -27,7 +28,6 @@ struct ConfigData {
 struct ReqParams {
     char *host;
     char *uri;
-    char *port;
     char *version;
     char *method;
     char *ctype;
