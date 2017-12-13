@@ -283,6 +283,7 @@ int retrieve_data(int sock, char *recv_buff, char *url, char *hash)
     while ((rebytes = recv(csock, buff, sizeof(buff), 0)) > 0) {
         safe_send(sock, buff, rebytes);
         fwrite(buff, 1, rebytes, cachefp);
+        // printf("%s", strtok(buff, "\r\n"));
         total_bytes += rebytes;
     }
 
@@ -312,23 +313,20 @@ void safe_send(int outsock, char *content, int nbytes)
 int parse_request(struct ReqParams *req_params, char *recv_buff)
 {
     char *token;
-    char *line;
+    char *hostline;
 
     // Split lines
-    token = strtok(strdup(recv_buff),"\r\n");
+    token = strtok_r(strdup(recv_buff),"\r\n", &hostline);
 
-    // Only relevant information is in the first line, remove http:// prefix
-    line = strdup(token);
-    remove_elt(line, "http://");
+    // Get method from firstline
+    req_params->method = strdup(strtok(token, " "));
 
-    // Only need to parse method to check if allowed by proxy
-    // and uri to perform dnslookup on
-    req_params->method = strdup(strtok(line, " "));
-    req_params->uri = strdup(strtok(NULL, "/"));
+    // Get hostname from next line 
+    strtok(hostline, " ");
+    req_params->uri = strdup(strtok(NULL, "\r\n"));
 
     // Cleanup
     free(token);
-    free(line);
 
     return (strcmp(req_params->method, "GET") == 0) ? 0 : -1;
 }
